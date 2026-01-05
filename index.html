@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventario Pro V3</title>
+    <title>Inventario V4 - Corregido</title>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         /* Estilos Generales */
@@ -37,7 +37,7 @@
         .scan-item strong { display: block; }
         .scan-item span { font-size: 0.85rem; color: #64748b; }
 
-        /* Pantallas (Navegación) */
+        /* Pantallas */
         .screen { display: none; }
         .active { display: block; }
 
@@ -57,9 +57,7 @@
 
         <div class="card">
             <h3>Historial</h3>
-            <div id="listaSesiones">
-                <p style="text-align:center; color:#999">No hay sesiones guardadas.</p>
-            </div>
+            <div id="listaSesiones"></div>
         </div>
     </div>
 
@@ -74,7 +72,7 @@
             <div id="reader"></div>
 
             <label>Código (codigo_bien):</label>
-            <input type="text" id="inpCodigo" placeholder="Escanea o escribe..." autofocus onchange="buscarProductoConocido()">
+            <input type="text" id="inpCodigo" placeholder="Escanea o escribe..." autofocus onkeyup="buscarProductoConocido()">
             
             <div style="display:flex; gap:10px;">
                 <div style="flex:1">
@@ -100,21 +98,17 @@
 </div>
 
 <script>
-    // === VARIABLES GLOBALES ===
+    // === VARIABLES ===
     let catalogoProductos = JSON.parse(localStorage.getItem('catalogoProductos')) || {}; 
     let sesiones = JSON.parse(localStorage.getItem('sesiones')) || [];
     let sesionActualId = null;
     let scannerObj = null;
     let camaraActiva = false;
 
-    // === NAVEGACIÓN Y CORRECCIÓN DE BUG DE CÁMARA ===
+    // === NAVEGACIÓN ===
     async function irAHome() {
         if (camaraActiva) {
-            try {
-                await detenerCamara();
-            } catch (error) {
-                console.log("Forzando salida...");
-            }
+            try { await detenerCamara(); } catch (e) {}
         }
         document.getElementById('screen-home').classList.add('active');
         document.getElementById('screen-scanner').classList.remove('active');
@@ -127,18 +121,11 @@
         limpiarFormulario();
     }
 
-    // === GESTIÓN DE SESIONES ===
+    // === SESIONES ===
     function crearNuevaSesion() {
-        const nombre = prompt("Nombre para esta sesión:", "Inventario " + new Date().toLocaleDateString());
+        const nombre = prompt("Nombre sesión:", "Inv " + new Date().toLocaleDateString());
         if (!nombre) return;
-
-        const nuevaSesion = {
-            id: Date.now(),
-            nombre: nombre,
-            fecha: new Date().toLocaleString(),
-            items: []
-        };
-
+        const nuevaSesion = { id: Date.now(), nombre, fecha: new Date().toLocaleString(), items: [] };
         sesiones.unshift(nuevaSesion);
         guardarSesiones();
         abrirSesion(nuevaSesion.id);
@@ -148,34 +135,26 @@
         sesionActualId = id;
         const sesion = sesiones.find(s => s.id === id);
         if(!sesion) return;
-
         document.getElementById('tituloSesionActual').innerText = sesion.nombre;
         renderizarItemsSesion();
         irAScanner();
     }
 
-    function guardarSesiones() {
-        localStorage.setItem('sesiones', JSON.stringify(sesiones));
-    }
+    function guardarSesiones() { localStorage.setItem('sesiones', JSON.stringify(sesiones)); }
 
     function renderizarListaSesiones() {
         const div = document.getElementById('listaSesiones');
         if (sesiones.length === 0) {
-            div.innerHTML = '<p style="text-align:center; color:#999">No hay sesiones guardadas.</p>';
+            div.innerHTML = '<p style="text-align:center; color:#999">Sin sesiones.</p>';
             return;
         }
-        
         let html = '';
         sesiones.forEach(s => {
-            html += `
-            <div class="session-item">
-                <div class="session-info">
-                    <h3>${s.nombre}</h3>
-                    <p>${s.fecha} - ${s.items.length} items</p>
-                </div>
+            html += `<div class="session-item">
+                <div class="session-info"><h3>${s.nombre}</h3><p>${s.fecha} (${s.items.length})</p></div>
                 <div>
-                    <button class="btn-primary" style="width:auto; padding:5px 10px; font-size:0.8rem" onclick="abrirSesion(${s.id})">Abrir</button>
-                    <button class="btn-danger" style="width:auto; padding:5px 10px; font-size:0.8rem" onclick="borrarSesion(${s.id})">X</button>
+                    <button class="btn-primary" style="padding:5px 10px; width:auto" onclick="abrirSesion(${s.id})">Abrir</button>
+                    <button class="btn-danger" style="padding:5px 10px; width:auto" onclick="borrarSesion(${s.id})">X</button>
                 </div>
             </div>`;
         });
@@ -183,72 +162,75 @@
     }
 
     function borrarSesion(id) {
-        if(!confirm("¿Borrar esta sesión?")) return;
-        sesiones = sesiones.filter(s => s.id !== id);
-        guardarSesiones();
-        renderizarListaSesiones();
-    }
-
-    // === LÓGICA DE ESCANEO ===
-    function buscarProductoConocido() {
-        const codigo = document.getElementById('inpCodigo').value.trim();
-        if (catalogoProductos[codigo]) {
-            document.getElementById('inpNombre').value = catalogoProductos[codigo].nombre;
-            document.getElementById('inpUbi').value = catalogoProductos[codigo].ubicacion;
+        if(confirm("¿Borrar sesión?")) {
+            sesiones = sesiones.filter(s => s.id !== id);
+            guardarSesiones();
+            renderizarListaSesiones();
         }
     }
 
+    // === CORRECCIÓN 1: LÓGICA DE BÚSQUEDA Y LIMPIEZA ===
+    function buscarProductoConocido() {
+        const codigo = document.getElementById('inpCodigo').value.trim();
+        
+        if (catalogoProductos[codigo]) {
+            // SI EXISTE: Llenamos los campos
+            document.getElementById('inpNombre').value = catalogoProductos[codigo].nombre;
+            document.getElementById('inpUbi').value = catalogoProductos[codigo].ubicacion;
+        } else {
+            // SI NO EXISTE: Borramos los campos para evitar confusión
+            // Solo borramos si hay algo escrito, para que se vea limpio
+            document.getElementById('inpNombre').value = '';
+            document.getElementById('inpUbi').value = '';
+        }
+    }
+
+    // === CORRECCIÓN 2: LIMPIEZA COMPLETA AL GUARDAR ===
     function guardarEscaneo() {
         const codigo = document.getElementById('inpCodigo').value.trim();
         const nombre = document.getElementById('inpNombre').value.trim();
         const ubi = document.getElementById('inpUbi').value.trim();
 
-        if (!codigo) { alert("El código es obligatorio"); return; }
+        if (!codigo) { alert("Falta código"); return; }
 
-        // Guardar en memoria global
+        // Actualizar catálogo global
         catalogoProductos[codigo] = { nombre, ubicacion: ubi };
         localStorage.setItem('catalogoProductos', JSON.stringify(catalogoProductos));
 
         // Guardar en sesión
         const item = { codigo, nombre, ubi, hora: new Date().toLocaleTimeString() };
-
-        const index = sesiones.findIndex(s => s.id === sesionActualId);
-        if (index !== -1) {
-            sesiones[index].items.unshift(item);
+        const idx = sesiones.findIndex(s => s.id === sesionActualId);
+        if (idx !== -1) {
+            sesiones[idx].items.unshift(item);
             guardarSesiones();
             renderizarItemsSesion();
-            limpiarFormulario();
+            limpiarFormulario(); // LLAMAMOS A LA FUNCIÓN CORREGIDA
             
-            // Feedback visual
-            const input = document.getElementById('inpCodigo');
-            input.style.backgroundColor = "#dcfce7";
-            setTimeout(() => input.style.backgroundColor = "white", 500);
+            // Feedback Visual
+            const inp = document.getElementById('inpCodigo');
+            inp.style.backgroundColor = "#dcfce7";
+            setTimeout(() => inp.style.backgroundColor = "white", 300);
         }
-    }
-
-    function renderizarItemsSesion() {
-        const sesion = sesiones.find(s => s.id === sesionActualId);
-        const ul = document.getElementById('listaItemsActual');
-        document.getElementById('contadorItems').innerText = sesion.items.length;
-        
-        let html = '';
-        sesion.items.forEach(item => {
-            html += `
-            <li class="scan-item">
-                <strong>${item.nombre || 'Sin nombre'}</strong>
-                <span>${item.codigo} | ${item.ubi || 'Sin ubicación'}</span>
-            </li>`;
-        });
-        ul.innerHTML = html;
     }
 
     function limpiarFormulario() {
         document.getElementById('inpCodigo').value = '';
         document.getElementById('inpNombre').value = '';
+        document.getElementById('inpUbi').value = ''; // AHORA SÍ SE BORRA LA UBICACIÓN
         document.getElementById('inpCodigo').focus();
     }
 
-    // === CÁMARA MEJORADA ===
+    function renderizarItemsSesion() {
+        const sesion = sesiones.find(s => s.id === sesionActualId);
+        document.getElementById('contadorItems').innerText = sesion.items.length;
+        let html = '';
+        sesion.items.forEach(i => {
+            html += `<li class="scan-item"><strong>${i.nombre}</strong><span>${i.codigo} | ${i.ubi}</span></li>`;
+        });
+        document.getElementById('listaItemsActual').innerHTML = html;
+    }
+
+    // === CÁMARA ===
     function toggleCamara() {
         if(camaraActiva) {
             detenerCamara();
@@ -257,17 +239,16 @@
             scannerObj = new Html5Qrcode("reader");
             scannerObj.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
                 (decodedText) => {
-                    document.getElementById('inpCodigo').value = decodedText;
-                    buscarProductoConocido();
-                    // Opcional: Auto-guardar descomentando la linea de abajo
-                    // guardarEscaneo();
+                    // Si lee lo mismo que ya está puesto, no hace nada para evitar parpadeos
+                    if(document.getElementById('inpCodigo').value !== decodedText){
+                        document.getElementById('inpCodigo').value = decodedText;
+                        buscarProductoConocido(); 
+                    }
                 }
-            ).catch(err => alert("Error cámara: " + err));
-            
+            ).catch(err => alert("Error camara: " + err));
             camaraActiva = true;
-            const btn = document.getElementById('btnCamara');
-            btn.innerText = "❌ Detener Cámara";
-            btn.classList.replace('btn-primary', 'btn-danger');
+            document.getElementById('btnCamara').innerText = "❌ Detener Cámara";
+            document.getElementById('btnCamara').classList.replace('btn-primary', 'btn-danger');
         }
     }
 
@@ -277,41 +258,27 @@
             document.getElementById('reader').style.display = "none";
             scannerObj.clear();
             camaraActiva = false;
-            const btn = document.getElementById('btnCamara');
-            btn.innerText = "📸 Activar Cámara";
-            btn.classList.replace('btn-danger', 'btn-primary');
-        }).catch(err => {
-            console.warn("Error deteniendo cámara", err);
-            camaraActiva = false;
-            document.getElementById('reader').style.display = "none";
-        });
+            document.getElementById('btnCamara').innerText = "📸 Activar Cámara";
+            document.getElementById('btnCamara').classList.replace('btn-danger', 'btn-primary');
+        }).catch(() => {});
     }
 
-    // === EXPORTAR EXCEL (MODIFICADO) ===
+    // === EXPORTAR ===
     function exportarSesionExcel() {
         const sesion = sesiones.find(s => s.id === sesionActualId);
-        if (!sesion || sesion.items.length === 0) { alert("Nada que exportar"); return; }
-
-        // AQUÍ ESTÁN TUS NOMBRES PERSONALIZADOS
-        let csv = "\uFEFFcodigo_bien,denominacion_bien,ubicacion\n";
+        if (!sesion || sesion.items.length === 0) { alert("Vacío"); return; }
         
-        sesion.items.forEach(i => {
-            // Aseguramos que los valores existan y ponemos comillas por si tienen espacios
-            csv += `"${i.codigo}","${i.nombre}","${i.ubi}"\n`;
-        });
+        let csv = "\uFEFFcodigo_bien,denominacion_bien,ubicacion\n";
+        sesion.items.forEach(i => csv += `"${i.codigo}","${i.nombre}","${i.ubi}"\n`);
 
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
+        link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
         link.download = `${sesion.nombre}.csv`;
         link.click();
     }
 
     function borrarTodoElSistema() {
-        if(confirm("ESTO BORRARÁ TODO. ¿Seguro?")) {
-            localStorage.clear();
-            location.reload();
-        }
+        if(confirm("¿Borrar TODO?")) { localStorage.clear(); location.reload(); }
     }
 
     renderizarListaSesiones();
