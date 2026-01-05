@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventario Pro con Sesiones</title>
+    <title>Inventario Pro V3</title>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         /* Estilos Generales */
@@ -41,7 +41,7 @@
         .screen { display: none; }
         .active { display: block; }
 
-        #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; margin-bottom: 10px; display:none; }
     </style>
 </head>
 <body>
@@ -50,7 +50,7 @@
 
     <div id="screen-home" class="screen active">
         <div class="card" style="text-align: center;">
-            <h2>📂 Mis Sesiones de Inventario</h2>
+            <h2>📂 Mis Sesiones</h2>
             <button class="btn-primary" onclick="crearNuevaSesion()">+ Nueva Sesión</button>
             <button class="btn-danger" onclick="borrarTodoElSistema()" style="font-size: 0.8rem; margin-top:10px">⚠️ Formatear Datos</button>
         </div>
@@ -73,28 +73,27 @@
             <button id="btnCamara" class="btn-primary" onclick="toggleCamara()">📸 Activar Cámara</button>
             <div id="reader"></div>
 
-            <label>Código:</label>
+            <label>Código (codigo_bien):</label>
             <input type="text" id="inpCodigo" placeholder="Escanea o escribe..." autofocus onchange="buscarProductoConocido()">
             
             <div style="display:flex; gap:10px;">
                 <div style="flex:1">
-                    <label>Nombre:</label>
+                    <label>Nombre (denominacion_bien):</label>
                     <input type="text" id="inpNombre" placeholder="Producto...">
                 </div>
                 <div style="flex:1">
-                    <label>Ubicación:</label>
+                    <label>Ubicación (ubicacion):</label>
                     <input type="text" id="inpUbi" placeholder="Estante A...">
                 </div>
             </div>
 
-            <button class="btn-success" onclick="guardarEscaneo()">💾 Agregar a Lista</button>
+            <button class="btn-success" onclick="guardarEscaneo()">💾 Guardar</button>
         </div>
 
         <div class="card">
-            <h3>📦 Elementos en esta sesión (<span id="contadorItems">0</span>)</h3>
-            <button class="btn-outline" onclick="exportarSesionExcel()">📥 Exportar esta sesión a Excel</button>
-            <ul id="listaItemsActual" class="scan-list">
-                </ul>
+            <h3>📦 Lista (<span id="contadorItems">0</span>)</h3>
+            <button class="btn-outline" onclick="exportarSesionExcel()">📥 Exportar Excel (CSV)</button>
+            <ul id="listaItemsActual" class="scan-list"></ul>
         </div>
     </div>
 
@@ -108,18 +107,15 @@
     let scannerObj = null;
     let camaraActiva = false;
 
-    // === NAVEGACIÓN ===
+    // === NAVEGACIÓN Y CORRECCIÓN DE BUG DE CÁMARA ===
     async function irAHome() {
-        // Intentamos detener la cámara si está encendida
         if (camaraActiva) {
             try {
                 await detenerCamara();
             } catch (error) {
-                console.log("Error forzando cierre de cámara, continuando de todos modos...");
+                console.log("Forzando salida...");
             }
         }
-
-        // Cambiamos de pantalla SIN IMPORTAR qué pasó con la cámara
         document.getElementById('screen-home').classList.add('active');
         document.getElementById('screen-scanner').classList.remove('active');
         renderizarListaSesiones();
@@ -133,17 +129,17 @@
 
     // === GESTIÓN DE SESIONES ===
     function crearNuevaSesion() {
-        const nombre = prompt("Nombre para esta sesión de inventario:", "Inventario " + new Date().toLocaleDateString());
+        const nombre = prompt("Nombre para esta sesión:", "Inventario " + new Date().toLocaleDateString());
         if (!nombre) return;
 
         const nuevaSesion = {
-            id: Date.now(), // ID único basado en la hora
+            id: Date.now(),
             nombre: nombre,
             fecha: new Date().toLocaleString(),
             items: []
         };
 
-        sesiones.unshift(nuevaSesion); // Agregar al principio
+        sesiones.unshift(nuevaSesion);
         guardarSesiones();
         abrirSesion(nuevaSesion.id);
     }
@@ -175,7 +171,7 @@
             <div class="session-item">
                 <div class="session-info">
                     <h3>${s.nombre}</h3>
-                    <p>${s.fecha} - ${s.items.length} productos</p>
+                    <p>${s.fecha} - ${s.items.length} items</p>
                 </div>
                 <div>
                     <button class="btn-primary" style="width:auto; padding:5px 10px; font-size:0.8rem" onclick="abrirSesion(${s.id})">Abrir</button>
@@ -193,13 +189,10 @@
         renderizarListaSesiones();
     }
 
-    // === LÓGICA DE ESCANEO Y PRODUCTOS ===
-    
-    // Al escribir o escanear un código, ver si ya lo conocemos de antes
+    // === LÓGICA DE ESCANEO ===
     function buscarProductoConocido() {
         const codigo = document.getElementById('inpCodigo').value.trim();
         if (catalogoProductos[codigo]) {
-            // ¡Lo conocemos! Rellenar datos
             document.getElementById('inpNombre').value = catalogoProductos[codigo].nombre;
             document.getElementById('inpUbi').value = catalogoProductos[codigo].ubicacion;
         }
@@ -212,26 +205,24 @@
 
         if (!codigo) { alert("El código es obligatorio"); return; }
 
-        // 1. Guardar o Actualizar en el Catálogo Global (Para el futuro)
+        // Guardar en memoria global
         catalogoProductos[codigo] = { nombre, ubicacion: ubi };
         localStorage.setItem('catalogoProductos', JSON.stringify(catalogoProductos));
 
-        // 2. Guardar en la Sesión Actual
-        const item = {
-            codigo, nombre, ubi, 
-            hora: new Date().toLocaleTimeString() 
-        };
+        // Guardar en sesión
+        const item = { codigo, nombre, ubi, hora: new Date().toLocaleTimeString() };
 
         const index = sesiones.findIndex(s => s.id === sesionActualId);
         if (index !== -1) {
-            sesiones[index].items.unshift(item); // Agregar al inicio de la lista
+            sesiones[index].items.unshift(item);
             guardarSesiones();
             renderizarItemsSesion();
             limpiarFormulario();
             
-            // Feedback visual (parpadeo verde en el borde)
-            document.getElementById('inpCodigo').style.borderColor = "green";
-            setTimeout(() => document.getElementById('inpCodigo').style.borderColor = "#cbd5e1", 500);
+            // Feedback visual
+            const input = document.getElementById('inpCodigo');
+            input.style.backgroundColor = "#dcfce7";
+            setTimeout(() => input.style.backgroundColor = "white", 500);
         }
     }
 
@@ -244,8 +235,8 @@
         sesion.items.forEach(item => {
             html += `
             <li class="scan-item">
-                <strong>${item.nombre || 'Sin nombre'} (${item.codigo})</strong>
-                <span>📍 ${item.ubi || 'Sin ubicación'} | ⏰ ${item.hora}</span>
+                <strong>${item.nombre || 'Sin nombre'}</strong>
+                <span>${item.codigo} | ${item.ubi || 'Sin ubicación'}</span>
             </li>`;
         });
         ul.innerHTML = html;
@@ -254,13 +245,10 @@
     function limpiarFormulario() {
         document.getElementById('inpCodigo').value = '';
         document.getElementById('inpNombre').value = '';
-        // Nota: NO limpiamos ubicación porque usualmente escaneas varios en el mismo estante.
-        // Si quieres limpiar ubicación también, descomenta la siguiente línea:
-        // document.getElementById('inpUbi').value = ''; 
         document.getElementById('inpCodigo').focus();
     }
 
-    // === CÁMARA (Igual que antes) ===
+    // === CÁMARA MEJORADA ===
     function toggleCamara() {
         if(camaraActiva) {
             detenerCamara();
@@ -270,67 +258,63 @@
             scannerObj.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
                 (decodedText) => {
                     document.getElementById('inpCodigo').value = decodedText;
-                    buscarProductoConocido(); // Auto-rellenar si existe
-                    // detenerCamara(); // Descomentar si quieres que cierre tras escanear
-                    
-                    // Sonido Beep simple (opcional)
-                    // new Audio('beep.mp3').play().catch(e=>{}); 
+                    buscarProductoConocido();
+                    // Opcional: Auto-guardar descomentando la linea de abajo
+                    // guardarEscaneo();
                 }
-            );
+            ).catch(err => alert("Error cámara: " + err));
+            
             camaraActiva = true;
-            document.getElementById('btnCamara').innerText = "❌ Detener Cámara";
-            document.getElementById('btnCamara').classList.replace('btn-primary', 'btn-danger');
+            const btn = document.getElementById('btnCamara');
+            btn.innerText = "❌ Detener Cámara";
+            btn.classList.replace('btn-primary', 'btn-danger');
         }
     }
 
     function detenerCamara() {
-        // Si no hay scanner o no está activa, no hacemos nada y devolvemos promesa resuelta
         if (!scannerObj || !camaraActiva) return Promise.resolve();
-
-        // Intentamos detenerla y devolvemos la promesa para que 'irAHome' pueda esperar
         return scannerObj.stop().then(() => {
             document.getElementById('reader').style.display = "none";
             scannerObj.clear();
             camaraActiva = false;
-            // Restaurar estilo del botón
             const btn = document.getElementById('btnCamara');
             btn.innerText = "📸 Activar Cámara";
-            btn.classList.remove('btn-danger');
-            btn.classList.add('btn-primary');
-        }).catch((err) => {
-            console.warn("La cámara ya estaba detenida o hubo un error menor:", err);
+            btn.classList.replace('btn-danger', 'btn-primary');
+        }).catch(err => {
+            console.warn("Error deteniendo cámara", err);
             camaraActiva = false;
             document.getElementById('reader').style.display = "none";
         });
     }
 
-    // === EXPORTAR EXCEL ===
+    // === EXPORTAR EXCEL (MODIFICADO) ===
     function exportarSesionExcel() {
         const sesion = sesiones.find(s => s.id === sesionActualId);
         if (!sesion || sesion.items.length === 0) { alert("Nada que exportar"); return; }
 
-        let csv = "\uFEFFHora,Codigo,Nombre,Ubicacion\n";
+        // AQUÍ ESTÁN TUS NOMBRES PERSONALIZADOS
+        let csv = "\uFEFFcodigo_bien,denominacion_bien,ubicacion\n";
+        
         sesion.items.forEach(i => {
-            csv += `"${i.hora}","${i.codigo}","${i.nombre}","${i.ubi}"\n`;
+            // Aseguramos que los valores existan y ponemos comillas por si tienen espacios
+            csv += `"${i.codigo}","${i.nombre}","${i.ubi}"\n`;
         });
 
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `Inventario_${sesion.nombre}.csv`;
+        link.download = `${sesion.nombre}.csv`;
         link.click();
     }
 
     function borrarTodoElSistema() {
-        if(confirm("ESTO BORRARÁ TODAS LAS SESIONES Y EL CATÁLOGO DE PRODUCTOS. ¿Seguro?")) {
+        if(confirm("ESTO BORRARÁ TODO. ¿Seguro?")) {
             localStorage.clear();
             location.reload();
         }
     }
 
-    // Inicializar
     renderizarListaSesiones();
-
 </script>
 </body>
 </html>
