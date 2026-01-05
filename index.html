@@ -1,1 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario con Celular</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 10px; background-color: #f4f4f9; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { color: #333; text-align: center; font-size: 1.5rem; }
+        
+        /* Inputs */
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        
+        /* Botones */
+        .btn { padding: 12px; cursor: pointer; border: none; border-radius: 4px; color: white; font-weight: bold; width: 100%; font-size: 16px; margin-bottom: 10px; }
+        .btn-cam { background-color: #6f42c1; }
+        .btn-add { background-color: #28a745; }
+        .btn-excel { background-color: #007bff; }
+        .btn-clear { background-color: #dc3545; }
+        
+        /* Área de la cámara */
+        #reader { width: 100%; margin-bottom: 15px; display: none; border: 2px solid #6f42c1; border-radius: 8px; }
 
+        /* Tabla */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+
+    <h1>📱 Inventario Móvil</h1>
+
+    <div class="card">
+        <button class="btn btn-cam" onclick="toggleCamera()">📸 Escanear con Cámara</button>
+        <div id="reader"></div>
+
+        <div class="input-group">
+            <label>Código Detectado:</label>
+            <input type="text" id="codigo" placeholder="Escribe o escanea..." autofocus>
+        </div>
+        <div class="input-group">
+            <label>Nombre:</label>
+            <input type="text" id="denominacion" placeholder="Producto...">
+        </div>
+        <div class="input-group">
+            <label>Ubicación:</label>
+            <input type="text" id="ubicacion" placeholder="Ubicación...">
+        </div>
+        <button class="btn btn-add" onclick="guardarManual()">💾 Guardar Registro</button>
+    </div>
+
+    <div class="card">
+        <button class="btn btn-excel" onclick="exportarExcel()">📥 Descargar Excel</button>
+        <button class="btn btn-clear" onclick="borrarTodo()">🗑️ Borrar Todo</button>
+        <div id="statusMsg" style="margin-top:10px;">Registros: 0</div>
+        
+        <div style="overflow-x:auto;">
+            <table id="tablaInventario">
+                <thead>
+                    <tr>
+                        <th>Hora</th>
+                        <th>Cód</th>
+                        <th>Nombre</th>
+                        <th>Ubi</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // === 1. Base de datos simulada ===
+        const baseDeDatos = {
+            "7750033000508": { nombre: "Coca Cola 500ml", ubicacion: "Refri 1" },
+            "7891000100103": { nombre: "Galletas Oreo", ubicacion: "Pasillo 4" }
+        };
+
+        let html5QrcodeScanner = null;
+        let camaraActiva = false;
+
+        document.addEventListener('DOMContentLoaded', cargarDatos);
+
+        // === 2. Lógica de la Cámara ===
+        function toggleCamera() {
+            if (camaraActiva) {
+                detenerCamara();
+            } else {
+                iniciarCamara();
+            }
+        }
+
+        function iniciarCamara() {
+            document.getElementById('reader').style.display = "block";
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            
+            // Inicia usando la cámara trasera (environment)
+            html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+            .then(() => {
+                camaraActiva = true;
+                document.querySelector('.btn-cam').innerText = "❌ Detener Cámara";
+            })
+            .catch(err => {
+                alert("Error al iniciar cámara: " + err);
+            });
+        }
+
+        function detenerCamara() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    document.getElementById('reader').style.display = "none";
+                    camaraActiva = false;
+                    document.querySelector('.btn-cam').innerText = "📸 Escanear con Cámara";
+                    html5QrcodeScanner.clear();
+                });
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Reproducir un sonido beep (opcional)
+            // beep(); 
+            
+            document.getElementById('codigo').value = decodedText;
+            procesarCodigo(decodedText);
+            
+            // Opcional: Detener cámara tras leer un código para ahorrar batería y evitar lecturas dobles
+            detenerCamara(); 
+        }
+
+        // === 3. Lógica de Negocio (Procesar datos) ===
+        function procesarCodigo(codigo) {
+            const nombreInput = document.getElementById('denominacion');
+            const ubiInput = document.getElementById('ubicacion');
+
+            if (baseDeDatos[codigo]) {
+                // Si existe, llenar y guardar automático
+                nombreInput.value = baseDeDatos[codigo].nombre;
+                ubiInput.value = baseDeDatos[codigo].ubicacion;
+                agregarRegistro();
+            } else {
+                // Si es nuevo, limpiar campos y pedir ingreso manual
+                nombreInput.value = "";
+                ubiInput.value = "";
+                alert("Producto nuevo. Ingresa el nombre y ubicación.");
+                nombreInput.focus();
+            }
+        }
+
+        function guardarManual() {
+            agregarRegistro();
+        }
+
+        function agregarRegistro() {
+            const codigo = document.getElementById('codigo').value;
+            const nombre = document.getElementById('denominacion').value;
+            const ubi = document.getElementById('ubicacion').value;
+            const fecha = new Date().toLocaleTimeString();
+
+            if (!codigo) { alert("Falta el código"); return; }
+
+            const registro = { fecha, codigo, nombre, ubi };
+            let inventario = JSON.parse(localStorage.getItem('miInventario')) || [];
+            inventario.unshift(registro);
+            localStorage.setItem('miInventario', JSON.stringify(inventario));
+
+            renderizarTabla();
+            
+            // Limpiar solo si guardamos manualmente, si es por cámara ya se detuvo
+            if(!camaraActiva) {
+                document.getElementById('codigo').value = '';
+                document.getElementById('denominacion').value = '';
+                document.getElementById('ubicacion').value = '';
+            }
+        }
+
+        // === 4. Utilidades (Tabla y Excel) ===
+        function renderizarTabla() {
+            const tbody = document.querySelector('#tablaInventario tbody');
+            tbody.innerHTML = '';
+            let inventario = JSON.parse(localStorage.getItem('miInventario')) || [];
+            document.getElementById('statusMsg').innerText = `Registros: ${inventario.length}`;
+            inventario.forEach(item => {
+                tbody.innerHTML += `<tr><td>${item.fecha}</td><td>${item.codigo}</td><td>${item.nombre}</td><td>${item.ubi}</td></tr>`;
+            });
+        }
+
+        function cargarDatos() { renderizarTabla(); }
+        
+        function borrarTodo() {
+            if(confirm("¿Borrar todo?")) {
+                localStorage.removeItem('miInventario');
+                renderizarTabla();
+            }
+        }
+
+        function exportarExcel() {
+            let inventario = JSON.parse(localStorage.getItem('miInventario')) || [];
+            if (inventario.length === 0) { alert("Sin datos"); return; }
+            let csv = "\uFEFFFecha,Codigo,Nombre,Ubicacion\n";
+            inventario.forEach(i => csv += `"${i.fecha}","${i.codigo}","${i.nombre}","${i.ubi}"\n`);
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            link.download = "inventario_movil.csv";
+            link.click();
+        }
+    </script>
+</body>
+</html>
