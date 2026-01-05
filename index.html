@@ -109,8 +109,17 @@
     let camaraActiva = false;
 
     // === NAVEGACIÓN ===
-    function irAHome() {
-        detenerCamara();
+    async function irAHome() {
+        // Intentamos detener la cámara si está encendida
+        if (camaraActiva) {
+            try {
+                await detenerCamara();
+            } catch (error) {
+                console.log("Error forzando cierre de cámara, continuando de todos modos...");
+            }
+        }
+
+        // Cambiamos de pantalla SIN IMPORTAR qué pasó con la cámara
         document.getElementById('screen-home').classList.add('active');
         document.getElementById('screen-scanner').classList.remove('active');
         renderizarListaSesiones();
@@ -275,15 +284,24 @@
     }
 
     function detenerCamara() {
-        if(scannerObj) {
-            scannerObj.stop().then(() => {
-                document.getElementById('reader').style.display = "none";
-                scannerObj.clear();
-            });
-        }
-        camaraActiva = false;
-        document.getElementById('btnCamara').innerText = "📸 Activar Cámara";
-        document.getElementById('btnCamara').classList.replace('btn-danger', 'btn-primary');
+        // Si no hay scanner o no está activa, no hacemos nada y devolvemos promesa resuelta
+        if (!scannerObj || !camaraActiva) return Promise.resolve();
+
+        // Intentamos detenerla y devolvemos la promesa para que 'irAHome' pueda esperar
+        return scannerObj.stop().then(() => {
+            document.getElementById('reader').style.display = "none";
+            scannerObj.clear();
+            camaraActiva = false;
+            // Restaurar estilo del botón
+            const btn = document.getElementById('btnCamara');
+            btn.innerText = "📸 Activar Cámara";
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-primary');
+        }).catch((err) => {
+            console.warn("La cámara ya estaba detenida o hubo un error menor:", err);
+            camaraActiva = false;
+            document.getElementById('reader').style.display = "none";
+        });
     }
 
     // === EXPORTAR EXCEL ===
